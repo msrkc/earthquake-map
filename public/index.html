@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Turkiye Deprem Haritasi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/2.3.4/vue.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.2.0/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+    <script src="cities.js"></script>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.2.0/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css"
+    />
+
+    <style>
+      .map {
+        width: 100vw;
+        height: 100vh;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+      #app {
+        position: relative;
+      }
+      [v-cloak] {
+        display: none;
+      }
+      .filters {
+        z-index: 99999;
+        position: absolute;
+        left: 50px;
+      }
+      select {
+        border: 2px #ccc solid;
+        background: white;
+        font-weight: bold;
+        outline: none;
+        color: darkslategray;
+        text-transform: capitalize;
+        padding: 3px;
+        margin-top: 10px;
+        font-size: 16px;
+      }
+      option {
+        text-transform: capitalize;
+        font-size: 16px;
+      }
+      .reset {
+        position: absolute;
+        z-index: 99999;
+        border: 2px #ccc solid;
+        background: white;
+        padding: 3px;
+        left: 10px;
+        top: 75px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="reset" @click="() => (location = '/')" v-cloak>
+        <img
+          src="https://img.icons8.com/android/24/000000/recurring-appointment.png"
+        />
+      </div>
+      <div class="filters" v-cloak>
+        <select
+          :value="isSelected('tarih') ? isSelected('tarih') : 'Tarih'"
+          @change="(evt) => changeLocation({name:'tarih', value: tarihler[evt.target.selectedIndex]})"
+        >
+          <option v-for="tarih in tarihler">
+            {{tarih ? tarih : 'Tarih'}}
+          </option>
+        </select>
+        <select
+          :value="isSelected('sehir') ? isSelected('sehir') : 'Sehir'"
+          @change="(evt) => changeLocation({name:'sehir', value: sehirler[evt.target.selectedIndex]})"
+        >
+          <option v-for="sehir in sehirler" :value="sehir ? sehir : 'Sehir'">
+            {{sehir ? sehir + depremCount(sehir) : 'Sehir'}}
+          </option>
+        </select>
+        <select
+          :value="isSelected('saat') ? isSelected('saat')  + ':00' : 'Saat'"
+          @change="(evt) => changeLocation({name:'saat', value: saatler[evt.target.selectedIndex]})"
+        >
+          <option v-for="saat in saatler">
+            {{saat ? saat + ':00' : 'Saat'}}
+          </option>
+        </select>
+        <select
+          :value="isSelected('min') ? isSelected('min') : 'Min'"
+          @change="(evt) => changeLocation({name:'min', value: siddetler[evt.target.selectedIndex]})"
+        >
+          <option v-for="min in siddetler">
+            {{min && min !== 0 ? min : 'Min'}}
+          </option>
+        </select>
+        <select
+          :value="isSelected('max') ? isSelected('max') : 'Max'"
+          @change="(evt) => changeLocation({name:'max', value: siddetler[evt.target.selectedIndex]})"
+        >
+          <option v-for="max in siddetler">
+            {{max && max !== 0 ? max : 'Max'}}
+          </option>
+        </select>
+      </div>
+      <div class="map" id="map">Yukleniyor...</div>
+    </div>
+    <script type="text/javascript">
+      (async () => {
+        const { data } = await axios.get("/api");
+        const depremler = [];
+        data.forEach(d => {
+          if (Object.entries(d).length !== 0 && d.constructor === Object) {
+            depremler.push(d);
+          }
+        });
+        vm.$data.depremler = depremler;
+        vm.$data.zoom = window.innerWidth < 600 ? 5 : 7;
+        vm.$data.sehirler = [
+          null,
+          [...new Set(depremler.map(d => d.sehir))].filter(c => {
+            if (cities.map(s => s.name.toLowerCase()).includes(c)) {
+              return c;
+            }
+          })
+        ].flat();
+        vm.$data.tarihler = [null, ...new Set(depremler.map(d => d.tarih))];
+        vm.$data.saatler = [
+          null,
+          ...new Set(depremler.map(d => d.saat.split(":")[0]))
+        ]
+          .sort()
+          .reverse();
+
+        const buyuklukArr = [
+          ...new Set(depremler.map(d => Number(d.buyukluk)))
+        ];
+        const min = parseInt(Math.min(...buyuklukArr));
+        const max = parseInt(Math.max(...buyuklukArr));
+        vm.$data.siddetler = Array.apply(null, { length: max + 1 - min }).map(
+          function(_, idx) {
+            return idx + min;
+          }
+        );
+
+        vm.$data.deprem_sayisi = Object.values(
+          depremler.reduce((a, { sehir }) => {
+            let key = `${sehir}`;
+            a[key] = a[key] || { sehir, deprem_sayisi: 0 };
+            a[key].deprem_sayisi++;
+            return a;
+          }, {})
+        );
+        vm.$mount("#app");
+      })();
+
+      const vm = new Vue({
+        data: {
+          depremler: [],
+          map: null,
+          tileLayer: null,
+          zoom: null,
+          sehirler: null,
+          siddetler: null,
+          filtered: null,
+          tarihler: null,
+          saatler: null,
+          deprem_sayisi: null
+        },
+        computed: {
+          url() {
+            return new URL(document.URL);
+          },
+          params() {
+            return this.url.searchParams;
+          }
+        },
+        mounted() {
+          const keys = [];
+          for (var pair of this.params.entries()) {
+            keys.push({ key: pair[0], value: pair[1] });
+          }
+          const sehir = keys.find(k => k.key === "sehir");
+          if (sehir) {
+            this.initMap(sehir.value);
+          } else {
+            this.initMap();
+          }
+          if (keys.length) {
+            this.filteredValues(keys);
+          } else {
+            this.initLayers();
+          }
+        },
+        methods: {
+          isSelected(val) {
+            return this.params.get(val);
+          },
+          changeLocation(val) {
+            if (val.value) {
+              this.params.set(val.name, val.value);
+            } else {
+              this.params.delete(val.name);
+            }
+            location = this.url;
+          },
+          depremCount(sehir) {
+            const count = this.deprem_sayisi.find(f => f.sehir === sehir)
+              .deprem_sayisi;
+            return " (" + count + ")";
+          },
+          popUp(deprem) {
+            const { tarih, saat, buyukluk, yer, sehir, derinlik } = deprem;
+            return `<div>
+              <strong style="text-transform:uppercase">${yer}  ${
+              sehir ? sehir : ""
+            }</strong><br>
+            <strong>Tarih:</strong> ${tarih} <br>
+            <strong>Saat:</strong>  ${saat} <br>
+            <strong>Buyukluk:</strong>  ${buyukluk} <br>
+            <strong>Derinlik:</strong>  ${derinlik}km
+            </div>`;
+          },
+          async filteredValues(keys) {
+            let api = "/api/filter/?";
+            keys.forEach(k => {
+              api += `${api.substr(api.length - 1) !== "?" ? "&" : ""}${
+                k["key"]
+              }=${k["value"]}`;
+            });
+            const { data } = await axios.get(api);
+            this.initLayers(data);
+          },
+          initLayers(data) {
+            const values = data ? data : this.depremler;
+            const clusterGroup = L.markerClusterGroup();
+            values.forEach(deprem => {
+              if (
+                Object.entries(deprem).length !== 0 &&
+                deprem.constructor === Object
+              ) {
+                deprem.leafletObject = L.marker([
+                  deprem.enlem,
+                  deprem.boylam
+                ]).bindPopup(this.popUp(deprem));
+                clusterGroup.addLayer(deprem.leafletObject);
+              }
+            });
+            this.map.addLayer(clusterGroup);
+          },
+          initMap(sehir) {
+            this.map = L.map("map");
+            if (sehir) {
+              const sehirLng = cities.find(c => c.name.toLowerCase() === sehir);
+              this.map.setView([sehirLng.latitude, sehirLng.longitude], 7);
+            } else {
+              this.map.setView([39.09, 34.6872927], this.zoom);
+            }
+            this.tileLayer = L.tileLayer(
+              "https://cartodb-basemaps-{s}.global.ssl.fastly.net/rastertiles/voyager/{z}/{x}/{y}.png",
+              {
+                maxZoom: 12,
+                attribution:
+                  '<a href="http://www.koeri.boun.edu.tr/scripts/lst0.asp" target="_blank">KRDAE</a> | &copy; <a href="http://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> / <a href="https://carto.com/attribution" target="_blank">Carto</a> | <a href="https://twitter.com/murats">murats</a> / <a href="https://github.com/msrkc">github</a>'
+              }
+            );
+
+            this.tileLayer.addTo(this.map);
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

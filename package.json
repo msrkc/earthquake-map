@@ -1,0 +1,19 @@
+{
+  "name": "deprem-haritasi",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@zeit/fetch-retry": "^4.1.0",
+    "cheerio": "^1.0.0-rc.3",
+    "express": "^4.17.1",
+    "node-cron": "^2.0.3",
+    "node-fetch": "^2.6.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
